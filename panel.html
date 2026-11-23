@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>B站 MV</title>
+<style>
+:root{--bg:#0E1014;--card:#171A21;--card2:#212734;--accent:#FB7299;--text:#E9ECF2;--sub:#8C94A6}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+.hd{position:sticky;top:0;z-index:9;display:flex;align-items:center;justify-content:space-between;
+    padding:14px 14px 10px;background:linear-gradient(160deg,#1B1030,#101321 55%,#0E1014)}
+.logo{font-size:20px;font-weight:700;letter-spacing:.5px}
+.logo .sub{font-size:10px;font-weight:400;color:var(--sub);margin-left:6px}
+.hd .r{display:flex;gap:6px;align-items:center}
+.pill{font-size:11px;padding:6px 11px;border-radius:16px;background:var(--card2);color:var(--text)}
+.pill.on{background:var(--accent);color:#fff}
+.search{margin:10px 14px 0;display:flex;align-items:center;background:var(--card2);border-radius:22px;padding:0 6px 0 14px;height:42px}
+.search input{flex:1;background:none;border:0;outline:0;color:var(--text);font-size:13px;height:100%}
+.search input::placeholder{color:var(--sub)}
+.search b{font-size:12px;font-weight:500;padding:7px 12px;border-radius:16px;background:var(--accent);color:#fff}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:10px 14px 2px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;font-size:12px;padding:8px 14px;border-radius:16px;background:var(--card2);color:var(--text)}
+.tab.on{background:var(--accent);color:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 12px 24px}
+.card{background:var(--card);border-radius:14px;overflow:hidden}
+.cover{position:relative;width:100%;padding-top:56.25%;background:#000 center/cover no-repeat}
+.dur{position:absolute;right:5px;bottom:5px;font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,.78)}
+.meta{padding:8px 9px 10px}
+.t{font-size:12px;line-height:1.45;max-height:3.0em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.s{font-size:10px;color:var(--sub);margin-top:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.state{text-align:center;color:var(--sub);font-size:13px;padding:40px 24px;line-height:1.8}
+.state b{color:var(--accent);font-weight:500}
+</style>
+</head>
+<body>
+<div class="hd">
+  <div class="logo">B站 MV<span class="sub">高清音乐现场</span></div>
+  <div class="r">
+    <span class="pill on" id="fx">≥2分</span>
+    <span class="pill" id="user">登录</span>
+    <span class="pill" id="gear">⚙</span>
+  </div>
+</div>
+<div class="search">
+  <input id="kw" placeholder="搜 MV、歌名、UP主" enterkeyhint="search">
+  <b id="go">搜索</b>
+</div>
+<div class="tabs" id="tabs"></div>
+<div class="grid" id="list"></div>
+<div class="state" id="state" style="display:none"></div>
+<script>
+var TABS=[
+ {n:'音乐排行',m:'rank',rid:3},
+ {n:'最新 MV',m:'search',kw:'MV',o:'pubdate'},
+ {n:'舞蹈排行',m:'rank',rid:129},
+ {n:'华语 MV',m:'search',kw:'华语MV',o:'click'},
+ {n:'K-POP',m:'search',kw:'K-POP MV',o:'click'}
+];
+var cur=0, shortFilter=localStorage.getItem('bmv_filter')!=='0';
+
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function img(u){u=String(u||'');if(u.indexOf('//')===0)u='https:'+u;if(u.indexOf('http://')===0)u='https://'+u.slice(7);return u}
+function fmtN(n){n=Number(n||0);if(n>=1e8)return (n/1e8).toFixed(1)+'亿';if(n>=1e4)return (n/1e4).toFixed(1)+'万';return String(n)}
+function fmtSec(s){s=Number(s||0);var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+  return h>0?h+':'+('0'+m).slice(-2)+':'+('0'+x).slice(-2):('0'+m).slice(-2)+':'+('0'+x).slice(-2)}
+function secOf(t){if(typeof t==='number')return t;if(!t)return 0;var p=String(t).split(':').map(Number);
+  if(p.length===2)return p[0]*60+p[1];if(p.length===3)return p[0]*3600+p[1]*60+p[2];return 0}
+
+function bridge(name){var f=window.BMV&&window.BMV[name];return f?f.apply(window.BMV,[].slice.call(arguments,1)):null}
+function api(path){try{return JSON.parse(bridge('get',path)||'{}')}catch(e){return {error:'解析失败'}}}
+function apiSigned(path,params){try{return JSON.parse(bridge('signed',path,JSON.stringify(params))||'{}')}catch(e){return {error:'解析失败'}}}
+
+function buildTabs(){
+  var box=$('tabs');box.innerHTML='';
+  TABS.forEach(function(t,i){
+    var d=document.createElement('div');d.className='tab'+(i===cur?' on':'');d.textContent=t.n;
+    d.onclick=function(){cur=i;load(i)};box.appendChild(d);
+  });
+}
+function loading(msg){$('list').innerHTML='';var s=$('state');s.style.display='block';s.innerHTML=msg}
+function showState(html,retry){var s=$('state');s.style.display='block';s.innerHTML=html;
+  if(retry){s.onclick=function(){s.onclick=null;retry()}}else s.onclick=null}
+
+function normalizeRank(d){
+  var arr=(d.data&&(d.data.list||d.data.archives))||[];
+  return arr.map(function(it){return {bvid:it.bvid,title:it.title,cover:it.pic,
+    up:(it.owner&&it.owner.name)||'',dur:secOf(it.duration),play:(it.stat&&it.stat.view)||0}});
+}
+function normalizeSearch(d){
+  var arr=(d.data&&d.data.result)||[];
+  return arr.map(function(it){return {bvid:it.bvid,title:String(it.title||'').replace(/<[^>]+>/g,''),
+    cover:it.pic,up:it.author||'',dur:secOf(it.duration),play:it.play||0}});
+}
+function render(items){
+  var f=items.filter(function(v){return !shortFilter||v.dur===0||v.dur>=120});
+  if(!f.length){showState('没拉到内容<br><b>点此重试</b>',function(){load(cur)});return}
+  $('state').style.display='none';
+  $('list').innerHTML=f.map(function(v){return '<div class="card" data-b="'+esc(v.bvid)+'" data-t="'+esc(v.title)+'">'+
+    '<div class="cover" style="background-image:url(\''+esc(img(v.cover))+'\')"><span class="dur">'+esc(v.dur?fmtSec(v.dur):'')+'</span></div>'+
+    '<div class="meta"><div class="t">'+esc(v.title)+'</div><div class="s">'+esc(v.up)+' · '+fmtN(v.play)+'播放</div></div></div>'}).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('.card'),function(el){
+    el.onclick=function(){bridge('play',el.getAttribute('data-b'),el.getAttribute('data-t'))};
+  });
+}
+function load(i){
+  buildTabs();
+  var t=TABS[i];loading('加载中…');
+  setTimeout(function(){
+    var d;
+    if(t.m==='rank'){
+      d=api('/x/web-interface/ranking/v2?rid='+t.rid+'&type=all');
+      if(d.error||d.code!==0){d=api('/x/web-interface/newlist?rid='+t.rid+'&pn=1&ps=20')}
+      var items=normalizeRank(d);
+      if(!items.length&&!d.error){showState('这个分区暂时没有内容<br><b>点此重试</b>',function(){load(i)});return}
+      if(d.error){showState(errText(d.error,i),function(){load(i)});return}
+      render(items);
+    }else{
+      d=apiSigned('/x/web-interface/search/type',{search_type:'video',keyword:t.kw,page:1,order:t.o||'totalrank'});
+      if(d.error||d.code!==0){d=api('/x/web-interface/search/type?search_type=video&keyword='+encodeURIComponent(t.kw)+'&page=1&order='+(t.o||'totalrank'))}
+      if(d.error){showState(errText(d.error,i),function(){load(i)});return}
+      render(normalizeSearch(d));
+    }
+  },10);
+}
+function errText(e,i){
+  if(String(e).indexOf('412')>=0)return '被 B 站风控（412）<br>换手机流量 / 关掉代理再试<br><b>点此重试</b>';
+  return '加载失败：'+esc(e)+'<br><b>点此重试</b>';
+}
+function doSearch(){
+  var kw=$('kw').value.trim();if(!kw)return;
+  Array.prototype.forEach.call($('tabs').querySelectorAll('.tab'),function(x){x.classList.remove('on')})
+  loading('搜索「'+esc(kw)+'」…');
+  setTimeout(function(){
+    var d=apiSigned('/x/web-interface/search/type',{search_type:'video',keyword:kw,page:1,order:'totalrank'});
+    if(d.error||d.code!==0){d=api('/x/web-interface/search/type?search_type=video&keyword='+encodeURIComponent(kw)+'&page=1&order=totalrank')}
+    if(d.error){showState(errText(d.error),doSearch);return}
+    var items=normalizeSearch(d);
+    if(!items.length){showState('没有找到相关视频',null);return}
+    render(items);
+  },10);
+}
+function refreshUser(){
+  var s={};try{s=JSON.parse(bridge('state')||'{}')}catch(e){}
+  $('user').textContent=(s.loggedIn&&s.uname)?s.uname:(s.loggedIn?'已登录':'登录');
+  $('user').className='pill'+(s.loggedIn?' on':'');
+}
+$('fx').onclick=function(){
+  shortFilter=!shortFilter;localStorage.setItem('bmv_filter',shortFilter?'1':'0');
+  this.className='pill'+(shortFilter?' on':'');load(cur);
+  bridge('toast',shortFilter?'已屏蔽 2 分钟以内':'已显示全部时长');
+};
+$('fx').className='pill'+(shortFilter?' on':'');
+$('user').onclick=function(){bridge('login')};
+$('gear').onclick=function(){bridge('settings')};
+$('go').onclick=doSearch;
+$('kw').addEventListener('keydown',function(e){if(e.key==='Enter'||e.keyCode===13){e.preventDefault();doSearch()}});
+refreshUser();load(0);
+setInterval(refreshUser,4000);
+</script>
+</body>
+</html>
