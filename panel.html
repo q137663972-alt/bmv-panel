@@ -33,6 +33,19 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"
 .state{text-align:center;color:var(--sub);font-size:13px;padding:40px 24px;line-height:1.8}
 .state b{color:var(--accent);font-weight:500}
 .ver{text-align:center;color:#5b6274;font-size:10px;padding:0 0 18px}
+.mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:30}
+.sheet{position:absolute;left:10px;right:10px;bottom:10px;background:var(--card);border-radius:16px;padding:16px 14px 14px;max-height:78%;overflow:auto}
+.sh{font-size:16px;font-weight:600;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:6px 0;border-bottom:1px solid #232a37}
+.row span{color:var(--sub)}
+.row b{font-weight:500;text-align:right;max-width:62%}
+.src{font-size:11px;padding:7px 9px;margin-top:6px;border-radius:9px;background:var(--card2);line-height:1.6}
+.src.ok{color:#7CE38B}.src.new{color:var(--accent)}
+.src span{color:#77809a;font-size:10px}
+.st{font-size:12px;color:var(--sub);padding:9px 0;line-height:1.7}
+.btn{display:block;text-align:center;font-size:13px;padding:11px;border-radius:22px;background:var(--accent);color:#fff;margin-top:10px}
+.btn2{display:block;text-align:center;font-size:13px;padding:10px;border-radius:22px;background:var(--card2);color:var(--text);margin-top:8px}
+.tip{font-size:10px;color:#5b6274;line-height:1.7;margin-top:12px}
 </style>
 </head>
 <body>
@@ -51,7 +64,18 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"
 <div class="tabs" id="tabs"></div>
 <div class="grid" id="list"></div>
 <div class="state" id="state" style="display:none"></div>
-<div class="ver">面板 rev 20261123b · 远程热更</div>
+<div class="ver" id="ver">面板 rev 20261123c · 点此查看热更</div>
+
+<div class="mask" id="mask" onclick="closeHot()">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh">热更状态</div>
+    <div id="info"></div>
+    <div id="hotres"></div>
+    <b class="btn" id="chk" onclick="checkHot()">检查是否有新版</b>
+    <b class="btn2" onclick="closeHot()">关闭</b>
+    <div class="tip">壳只是容器：改面板 → 推仓库 → 点「检查」→「立即应用」，无需重装 APK。APK 仅在壳能力变更时升级。</div>
+  </div>
+</div>
 <script>
 var TABS=[
  {n:'音乐排行',m:'rank',rid:3},
@@ -144,6 +168,38 @@ function doSearch(){
     render(items);
   },10);
 }
+function infoHtml(){
+  var s={};try{s=JSON.parse(bridge('panelInfo')||'{}')}catch(e){}
+  var rows='<div class="row"><span>当前面板 rev</span><b>'+(s.rev||'内置')+'</b></div>'+
+   '<div class="row"><span>加载来源</span><b style="font-size:10px">'+esc(s.src||'内置离线面板')+'</b></div>'+
+   '<div class="row"><span>加载时间</span><b>'+(esc(s.at)||'-')+'</b></div>'+
+   '<div class="row"><span>生效方式</span><b>'+(s.cache?'本地缓存':'远程直连')+'</b></div>'+
+   '<div class="row"><span>壳版本</span><b>v'+(s.apkVersion||'?')+' · code '+(s.apkCode||'?')+'</b></div>';
+  return rows;
+}
+function openHot(){$('info').innerHTML=infoHtml();$('hotres').innerHTML='';$('chk').textContent='检查是否有新版';$('mask').style.display='block'}
+function closeHot(){$('mask').style.display='none'}
+function checkHot(){
+  $('chk').textContent='检查中…';
+  $('hotres').innerHTML='<div class="st">正在逐个源比对…</div>';
+  setTimeout(function(){
+    var d={};try{d=JSON.parse(bridge('checkUpdate')||'{}')}catch(e){d={error:String(e)}}
+    if(d.error){$('hotres').innerHTML='<div class="st">比对失败：'+esc(d.error)+'</div>';$('chk').textContent='检查是否有新版';return}
+    var online=d.online||[];
+    var rows=online.map(function(x){
+      return '<div class="src '+(x.same?'ok':'new')+'">'+(x.same?'✅ 一致 ':'⚠️ 有新版 ')+'rev '+esc(x.rev||'-')+
+        '<br><span>'+esc(x.src)+' · '+x.bytes+' 字节</span></div>'}).join('');
+    if(!rows)rows='<div class="st">所有源都连不上（可能被墙/限流），稍后再试</div>';
+    var head=d.hasNew?'<div class="st" style="color:#FB7299">远程已更新（rev '+esc(d.teach)+'），本地还是 rev '+esc(d.curRev||'内置')+'</div>'
+      :'<div class="st" style="color:#7CE38B">✅ 各源与本地一致，已是最新</div>';
+    $('hotres').innerHTML=head+rows+(d.hasNew?'<b class="btn" onclick="applyHot()">立即应用新版</b>':'');
+    $('chk').textContent='重新检查';
+  },10);
+}
+function applyHot(){
+  var r={};try{r=JSON.parse(bridge('applyUpdate')||'{}')}catch(e){r={ok:false}}
+  if(r.ok){closeHot();bridge('toast','已应用新版 rev '+r.rev)}else bridge('toast','应用失败：'+esc(r.error||'未知'))
+}
 function refreshUser(){
   var s={};try{s=JSON.parse(bridge('state')||'{}')}catch(e){}
   $('user').textContent=(s.loggedIn&&s.uname)?s.uname:(s.loggedIn?'已登录':'登录');
@@ -159,6 +215,7 @@ $('user').onclick=function(){bridge('login')};
 $('gear').onclick=function(){bridge('settings')};
 $('go').onclick=doSearch;
 $('kw').addEventListener('keydown',function(e){if(e.key==='Enter'||e.keyCode===13){e.preventDefault();doSearch()}});
+$('ver').onclick=openHot;
 refreshUser();load(0);
 setInterval(refreshUser,4000);
 </script>
