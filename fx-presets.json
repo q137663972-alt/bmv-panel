@@ -1,0 +1,32 @@
+[
+  {
+    "name": "实验·厚暖人声",
+    "bass": 3.0,
+    "sub": 4.0,
+    "mid": 5.0,
+    "high": 1.0,
+    "widen": 0.05,
+    "gain": 0,
+    "comp": true
+  },
+  {
+    "name": "实验·现场低音",
+    "bass": 6.0,
+    "sub": 7.0,
+    "mid": 0.0,
+    "high": 1.0,
+    "widen": 0.12,
+    "gain": 0,
+    "comp": true
+  },
+  {
+    "name": "实验·干净透亮",
+    "bass": 0.5,
+    "sub": 0.0,
+    "mid": 2.0,
+    "high": 5.0,
+    "widen": 0.0,
+    "gain": 0,
+    "comp": true
+  }
+]
